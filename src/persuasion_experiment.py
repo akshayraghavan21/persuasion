@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
     ## Project Params
     parser.add_argument("--wandb_project", type=str, default='experiment_gaia_llama2-7b_tests')
     parser.add_argument("--model_name", type=str, default="/gaia_data/pretrained_models/llama2-7b-hf/")
-    parser.add_argument("--data_file", type=str, default="dpo_random_neg_op_comment_v001.json")
+    parser.add_argument("--data_file", type=str, default="dpo_random_neg_op_comment_v002.json")
     parser.add_argument("--project_data_dir", type=str, default="../data/")
     parser.add_argument("--project_output_dir", type=str, default="../output")
     
@@ -56,15 +56,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_length", type=int, default=1536)
 
     ## Eval Sample Gen Txt Params
-    parser.add_argument("--eval_sample_gen_txt_idx", type=int, default=15)
+    parser.add_argument("--eval_sample_gen_txt_idxs", type=int, nargs='+', default=[15])
     parser.add_argument("--eval_sample_gen_txt_max_len", type=int, default=1500)
     parser.add_argument("--eval_sample_gen_txt_top_k", type=int, default=50)
     parser.add_argument("--eval_sample_gen_txt_top_p", type=int, default=0.9)
-    parser.add_argument("--eval_sample_gen_txt_temperature", type=int, default=0.7)
+    parser.add_argument("--eval_sample_gen_txt_temperature", type=int, default=0.001)
     parser.add_argument("--eval_sample_gen_txt_do_sample", type=bool, default=True)
 
     ## General Params
     parser.add_argument("--seed", type=int, default=42)
+
+    ## Dataset Prep
+    parser.add_argument("--preprocess_datasets", type=bool, default=True)
+    parser.add_argument("--preprocess_datasets_fn", type=str, default="template_edit_dataset")
+    parser.add_argument("--template_prefix", type=str, default="Instruction: When given a piece of text, your task is to craft a persuasive response that encourages the reader to reconsider or adjust their position. Employ strategies that include (but are not limited to) presenting well-supported arguments, appealing to both emotions and logic, and thoughtfully addressing counterarguments. Adapt your tone to the context, ensuring your response is assertive yet respectful. Your goal is to move the reader's stance, ideally toward your perspective, but complete reversal isn't always necessary — nudging their viewpoint or sparking doubt can be just as valuable.\n\nInput: ")
+    parser.add_argument("--template_suffix", type=str, default="\n\nOutput: ")
 
     return parser.parse_args()
 
@@ -109,9 +115,9 @@ def load_and_prepare_dataset_no_leaks(args: argparse.Namespace) -> DatasetDict:
     
     ## Create dataset
     return DatasetDict({
-        'train': dataset.select(get_indices(train_groups)).select(range(50)),
-        'validation': dataset.select(get_indices(val_groups)).select(range(15)),
-        'test': dataset.select(get_indices(test_groups)).select(range(15)),
+        'train': dataset.select(get_indices(train_groups)),
+        'validation': dataset.select(get_indices(val_groups)),
+        'test': dataset.select(get_indices(test_groups)),
     })
 
 
@@ -144,6 +150,13 @@ def setup_model_and_tokenizer(args: argparse.Namespace) -> tuple:
     model.enable_input_require_grads()
     
     return model, tokenizer
+
+
+def template_edit_dataset(dataset, prefix, suffix):
+    def add_prefix_and_suffix(example):
+        example["prompt"] = prefix + example["prompt"] + suffix
+        return example
+    return dataset.map(add_prefix_and_suffix)
 
 
 def get_training_args(args: argparse.Namespace, output_dir: str) -> DPOConfig:
@@ -202,6 +215,22 @@ def train_dpo(args: argparse.Namespace) -> float:
 
             ## Load dataset and model, tokenizer
             datasets = load_and_prepare_dataset_no_leaks(args)
+
+            ## Preprocess dataset if required
+            if args.preprocess_datasets:
+                if args.preprocess_datasets_fn:
+                    preprocess_function = globals().get(args.preprocess_datasets_fn)
+                    if callable(preprocess_function):
+                        datasets = preprocess_function(
+                            dataset=datasets,
+                            prefix=args.template_prefix,
+                            suffix=args.template_suffix
+                        )
+                    else:
+                        print(f"Warning: {args.preprocess_datasets_fn} is not a callable function.")
+                else:
+                    print("No preprocessing function specified.")
+            
             model, tokenizer = setup_model_and_tokenizer(args)
 
             ## Configure LORA
@@ -213,7 +242,6 @@ def train_dpo(args: argparse.Namespace) -> float:
                 task_type="CAUSAL_LM",
                 target_modules=['v_proj', 'q_proj']
             )
-            
             ## Configure DPOConfig
             training_args = get_training_args(args, run_output_dir)
             
@@ -228,7 +256,12 @@ def train_dpo(args: argparse.Namespace) -> float:
                 beta=args.beta,
                 max_prompt_length=args.max_prompt_length,
                 max_length=args.max_length,
-                wandb_run=run
+                wandb_run=run,
+                eval_sample_gen_txt_idxs=args.eval_sample_gen_txt_idxs,
+                eval_sample_gen_txt_max_len=args.eval_sample_gen_txt_max_len,
+                eval_sample_gen_txt_top_k=args.eval_sample_gen_txt_top_k,
+                eval_sample_gen_txt_top_p=args.eval_sample_gen_txt_top_p,
+                eval_sample_gen_txt_temperature=args.eval_sample_gen_txt_temperature,
             )
             
             ## Train model

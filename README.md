@@ -20,46 +20,79 @@ The goal of modeling persuasion can be framed as a reinforcement learning task: 
 ```
 ~Persuasion
 ├── data
-│   ├── dpo_src_002.json
+│   ├── dpo_random_neg_op_comment_v001.json
+│   └── dpo_random_neg_op_comment_v002.json
 ├── documentation
-│   └── dpo_gpt2_reg_beta_v1.png
+│   └── next_steps.txt
 ├── input
-│   └── config.text
+├── lcache
+├── README.md
 ├── requirements
-│   └── env.yml
-├── op_logs
-│   └── op_logs.log
-├── runs
-│   ├── YYYYMMDD_HHMMSS_WANDBRUNID
-│       ├── logs
-│       ├── model
-│       └── wandb
+│   └── dpo_noneric_optimized.yaml
 └── src
-    ├── custom_run_code_wandb.py
-    ├── dpo_v4.py
-    ├── generate_sample_text.py
-    └── zephyr_test.py
+    ├── llama2_7b_dpo_modified.py
+    ├── llama2_7b_dpo_modified_v2.py
+    ├── llama2_7b_dpo.py
+    ├── persuasion_dpo_trainer.py
+    ├── persuasion_experiment.py
+    └── persuasion_hp_search_optuna.py
 ```
 ## Run Instructions
-Pre-requisites: Setup Conda environment and load the env.yml file in ~/Persuasion/requirements dir to setup the environment required for the codebase.
+Pre-requisites: Setup Conda environment and load the env.yml file in ~/persuasion/requirements dir to setup the environment required for the codebase.
+```
+conda env create -f ./requirements/dpo_noneric_optimized.yaml
+conda activate dpo_noneric_optimized
+```
 
-### Config For Hyperparameter Tuning
-The script is modularized to receive config values to hyperparameter tune the model using wandb. As per the format on how sweep config has to be set, the config file is created and passed as an argument to the training run file.
+The experiments and logging is done to wandb, hence would require to setup wandb login and more. If not setup, follow further, else please skip this step.
+```
+wandb login
+```
+This will prompt you to enter your API key. You can find your API key in your W&B account by going to https://wandb.ai/authorize.
 
+### Memory Requirement
+Hyperparam search or running an experiment for DPO + LoRA Training requires 2+ A6000 GPUs.
 
-### Training
-As per the config file above, models, tokenizer, hyperparameters are initialized/decided.
+### Training/Hyperparam tuning
+For default setup, please refer to ~/persuasion/documentation/default_config.txt
 
-Run the "```custom_run_code_wandb.py```" file with the below command to train the DPO model:
-```nohup python ~/persuasion/src/custom_run_code_wandb.py "~/persuasion/input/config.txt" > ~/persuasion/op_logs/op_logs.log 2>&1 &```
+Note: It's best to run these experiments in a tmux session.
+```
+tmux new -s dpo_persuasion_exp
+tmux a -t dpo_persuasion_exp
+```
 
-This training process creates files in ```op_logs``` and ```runs``` dir which consists of wandb logs, model weights, and tokenizer checkpoints. This can be utilized further for evaluation.
+### Run an Experiment
+To run an experiment with default hyperparams [refer to default_config.txt file], run the below command:
+```
+[CUDA_VISIBLE_DEVICES=0,1] python ./src/persuasion_experiment.py"
+```
 
+### Hyperparam Search
+We perform hyperparam search using optuna. To run one, please run the below command:
+```
+CUDA_VISIBLE_DEVICES=0,1 python ./src/persuasion_hp_search_optuna.py --gradient_accumulation_steps=16 --logging_steps=50
+```
 
-### Evaluation
-Post model training, the satisfactory model can be used to generate sample text using the script ```~/persuasion/src/generate_sample_text.py```. Edit the prompt in the script to generate output for it.
+Post running an hyperparam search, information of the trials along with the best trial is provided in: ```~/persuasion/output/study_results_YYYYMMDD_HHMMSS.json"
 
-** Edit the path to the satisfactory model to generate samples using that model trained.
+### Custom Hyperparam Search
+Edit the objective function in ```~/persuasion/src/persuasion_hp_search_optuna.py" to tune the parameters of your choice.
 
-## Results
-Can view the run results here: ```https://api.wandb.ai/links/sbu-hlab-persuasion/xk0r538f```
+## Interpreting the Wandb Dashboard
+Once an experiment has successfully completed, it's visible in your wandb dashboard under the project specified as part of ```wandb_project``` cli argument [default: experiment_gaia_llama2-7b_tests]
+
+#### Eval & Train
+Policy: model to be aligned
+Reference: base model
+
+1. loss - DPO Loss [lower the better]
+2. perplexity - measures how well a model predicts a sequence of words and provides an indication of how "surprised" the model is by the actual data
+3. rewards/chosen: the mean difference between the log probabilities of the policy model and the reference model for the chosen responses scaled by beta
+4. rewards/rejected: the mean difference between the log probabilities of the policy model and the reference model for the rejected responses scaled by beta
+5. rewards/accuracies: mean of how often the chosen rewards are > than the corresponding rejected rewards
+6. rewards/margins: the mean difference between the chosen and corresponding rejected rewards
+
+#### Tables
+1. sample_level_metrics_table_data - train example level qualitative and quantitative metrics
+2. eval_sample_gen_txt_table_data - test custom sample text generation across epochs

@@ -14,7 +14,7 @@ def objective(trial):
     args.learning_rate = trial.suggest_float('learning_rate', 1e-6, 1e-4, log=True)
     args.beta = trial.suggest_categorical('beta', [0.10, 0.15, 0.20, 0.25])
     args.lr_scheduler_type = trial.suggest_categorical('lr_scheduler_type', ['cosine', 'linear'])
-    # args.num_train_epochs = trial.suggest_int('num_train_epochs', 2, 8) 
+    args.num_train_epochs = trial.suggest_int('num_train_epochs', 2, 5) 
 
     # Run the training
     try:
@@ -83,4 +83,4 @@ def optimize_hyperparameters(n_trials=10):
     print(f"Study results saved to: {filepath}")
     
 if __name__ == "__main__":
-    optimize_hyperparameters(n_trials=3)
+    optimize_hyperparameters(n_trials=10)

@@ -23,6 +23,7 @@ import csv
 import datetime
 from datasets import Dataset
 from torchmetrics.text import Perplexity
+from peft import PeftConfig
 
 class PersuasionDPOTrainer(DPOTrainer):
     def __init__(self, *args, **kwargs):
@@ -37,7 +38,7 @@ class PersuasionDPOTrainer(DPOTrainer):
 
         self.eval_sample_gen_txt_file_name = kwargs.pop('eval_sample_gen_txt_file_name', f"generated_samples_{self.file_suffix}.csv")
         self.eval_sample_gen_txt_table_data = kwargs.pop('eval_sample_gen_txt_table_data', None)
-        self.eval_sample_gen_txt_idx = kwargs.pop('eval_sample_gen_txt_idx', 12)
+        self.eval_sample_gen_txt_idxs = kwargs.pop('eval_sample_gen_txt_idxs', [15])
         self.eval_sample_gen_txt_max_len = kwargs.pop('eval_sample_gen_txt_max_len', 1500)
         self.eval_sample_gen_txt_top_k = kwargs.pop('eval_sample_gen_txt_top_k', 50)
         self.eval_sample_gen_txt_top_p = kwargs.pop('eval_sample_gen_txt_top_p', 0.9)
@@ -482,6 +483,83 @@ class PersuasionDPOTrainer(DPOTrainer):
 
         return losses.mean(), metrics
     
+    # def evaluation_loop(
+    #     self,
+    #     dataloader: DataLoader,
+    #     description: str,
+    #     prediction_loss_only: Optional[bool] = None,
+    #     ignore_keys: Optional[List[str]] = None,
+    #     metric_key_prefix: str = "eval",
+    # ) -> EvalLoopOutput:
+    #     # Call the original evaluation loop
+    #     output = super().evaluation_loop(dataloader, description, prediction_loss_only, ignore_keys, metric_key_prefix)
+    #     import pdb; pdb.set_trace()
+    #     # Generate text for a random sample
+    #     if self.generate_and_log_custom_sample_during_eval:
+    #         # Select a random sample
+    #         eval_dataset = dataloader.dataset
+    #         random_index = self.eval_sample_gen_txt_idx
+    #         sample = eval_dataset[random_index]
+
+    #         model_device = self.model.device 
+    #         # Prepare the input
+    #         inputs = self.tokenizer(sample['prompt'], return_tensors="pt", truncation=True, padding=True)
+    #         inputs = {k: v.to(model_device) for k, v in inputs.items()}
+            
+    #         # import pdb; pdb.set_trace()
+    #         with torch.no_grad():
+    #             gen_output = self.model.generate(
+    #                 **inputs,
+    #                 max_length=self.eval_sample_gen_txt_max_len,
+    #                 top_k=self.eval_sample_gen_txt_top_k,
+    #                 top_p=self.eval_sample_gen_txt_top_p,
+    #                 temperature=self.eval_sample_gen_txt_temperature,
+    #                 do_sample=self.eval_sample_gen_txt_do_sample
+    #             )
+    #             generated_text = self.tokenizer.batch_decode(gen_output[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True)[0]
+
+    #         print("Printing Eval Text:",generated_text)
+            
+    #         # Get the current epoch
+    #         current_epoch = self.state.epoch
+                   
+    #         # Print to screen
+    #         print(f"Generated text for sample {random_index} at epoch {current_epoch:.2f}:")
+    #         print(generated_text)
+            
+    #         # Write to file
+    #         eval_samples_file_path = os.path.join(self.args.output_dir, self.eval_sample_gen_txt_file_name)
+
+        
+    #         # Create the CSV file with headers if it doesn't exist
+    #         if not os.path.exists(eval_samples_file_path):
+    #             with open(eval_samples_file_path, 'w', newline='') as csvfile:
+    #                 writer = csv.writer(csvfile)
+    #                 writer.writerow(self.eval_sample_gen_txt_cols)
+            
+    #         with open(eval_samples_file_path, 'a', newline='') as csvfile:
+    #             writer = csv.writer(csvfile)
+    #             writer.writerow([
+    #                 random_index,
+    #                 current_epoch,
+    #                 sample['prompt'],
+    #                 generated_text,
+    #                 sample['chosen'],
+    #                 sample['rejected'],
+    #             ])
+            
+    #         if self.eval_sample_gen_txt_table_data is not None:
+    #             self.eval_sample_gen_txt_table_data.add_data(
+    #                 random_index,
+    #                 current_epoch,
+    #                 sample['prompt'],
+    #                 generated_text,
+    #                 sample['chosen'],
+    #                 sample['rejected'], 
+    #             )
+        
+    #     return output
+
     def evaluation_loop(
         self,
         dataloader: DataLoader,
@@ -493,69 +571,96 @@ class PersuasionDPOTrainer(DPOTrainer):
         # Call the original evaluation loop
         output = super().evaluation_loop(dataloader, description, prediction_loss_only, ignore_keys, metric_key_prefix)
 
-        # Generate text for a random sample
         if self.generate_and_log_custom_sample_during_eval:
-            # Select a random sample
-            eval_dataset = dataloader.dataset
-            random_index = self.eval_sample_gen_txt_idx
-            sample = eval_dataset[random_index]
+            model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
-            model_device = self.model.device 
-            # Prepare the input
-            inputs = self.tokenizer(sample['prompt'], return_tensors="pt", truncation=True, padding=True)
-            inputs = {k: v.to(model_device) for k, v in inputs.items()}
-            
-            # import pdb; pdb.set_trace()
-            with torch.no_grad():
-                gen_output = self.model.generate(
-                    **inputs,
-                    max_length=self.eval_sample_gen_txt_max_len,
-                    top_k=self.eval_sample_gen_txt_top_k,
-                    top_p=self.eval_sample_gen_txt_top_p,
-                    temperature=self.eval_sample_gen_txt_temperature,
-                    do_sample=self.eval_sample_gen_txt_do_sample
+            if len(self.accelerator._models) == 0 and model is self.model:
+                model = (
+                    self.accelerator.prepare(model)
+                    if self.is_deepspeed_enabled
+                    else self.accelerator.prepare_model(model, evaluation_mode=True)
                 )
-                generated_text = self.tokenizer.batch_decode(gen_output[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True)[0]
 
-            print("Printing Eval Text:",generated_text)
-            
-            # Get the current epoch
-            current_epoch = self.state.epoch
-                   
-            # Print to screen
-            print(f"Generated text for sample {random_index} at epoch {current_epoch:.2f}:")
-            print(generated_text)
-            
-            # Write to file
-            eval_samples_file_path = os.path.join(self.args.output_dir, self.eval_sample_gen_txt_file_name)
+                if self.is_fsdp_enabled:
+                    self.model = model
 
+                if model is not self.model:
+                    self.model_wrapped = model
+
+                if self.is_deepspeed_enabled:
+                    self.deepspeed = self.model_wrapped
+
+            self._generate_and_log_samples(dataloader, model)
+
+        return output 
+
+    def _generate_and_log_samples(self, dataloader: DataLoader, model):
+        eval_dataset = dataloader.dataset
+        model_device = model.device
+        current_epoch = self.state.epoch
+
+        for sample_idx in self.eval_sample_gen_txt_idxs:
+            sample = eval_dataset[sample_idx]
+            generated_text = self._generate_text(model, sample, model_device)
+            self._log_generated_text(sample_idx, current_epoch, sample, generated_text)
+
+    def _generate_text(self, model, sample: Dict[str, Any], model_device: torch.device) -> str:
+        inputs = self.tokenizer(sample['prompt'], return_tensors="pt", truncation=True, padding=True, max_length=self.max_length)
+        inputs = {k: v.to(model_device) for k, v in inputs.items()}
         
-            # Create the CSV file with headers if it doesn't exist
-            if not os.path.exists(eval_samples_file_path):
-                with open(eval_samples_file_path, 'w', newline='') as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow(self.eval_sample_gen_txt_cols)
+        with torch.no_grad():
+            gen_output = model.generate(
+                **inputs,
+                max_length=self.eval_sample_gen_txt_max_len,
+                top_k=self.eval_sample_gen_txt_top_k,
+                top_p=self.eval_sample_gen_txt_top_p,
+                temperature=self.eval_sample_gen_txt_temperature,
+                do_sample=self.eval_sample_gen_txt_do_sample
+            )
+        
+        return self.tokenizer.batch_decode(gen_output[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True)[0]
+
+    def _log_generated_text(self, sample_idx: int, current_epoch: float, sample: Dict[str, Any], generated_text: str):
+        print(f"Generated text for sample {sample_idx} at epoch {current_epoch:.2f}:")
+        print(generated_text)
+
+        self._write_to_csv(sample_idx, current_epoch, sample, generated_text)
+        self._log_to_wandb(sample_idx, current_epoch, sample, generated_text)
+
+    def _write_to_csv(self, sample_idx: int, current_epoch: float, sample: Dict[str, Any], generated_text: str):
+        eval_samples_file_path = os.path.join(self.args.output_dir, self.eval_sample_gen_txt_file_name)
+
+        try:
+            os.makedirs(os.path.dirname(eval_samples_file_path), exist_ok=True)
+            
+            file_exists = os.path.isfile(eval_samples_file_path)
             
             with open(eval_samples_file_path, 'a', newline='') as csvfile:
                 writer = csv.writer(csvfile)
+                if not file_exists:
+                    writer.writerow(self.eval_sample_gen_txt_cols)
+                
                 writer.writerow([
-                    random_index,
+                    sample_idx,
                     current_epoch,
                     sample['prompt'],
                     generated_text,
-                    sample['chosen'],
-                    sample['rejected'],
+                    sample.get('chosen', ''),
+                    sample.get('rejected', ''),
                 ])
-            
-            if self.eval_sample_gen_txt_table_data is not None:
+        except IOError as e:
+            print(f"Error writing to CSV file: {e}")
+
+    def _log_to_wandb(self, sample_idx: int, current_epoch: float, sample: Dict[str, Any], generated_text: str):
+        if self.eval_sample_gen_txt_table_data is not None:
+            try:
                 self.eval_sample_gen_txt_table_data.add_data(
-                    random_index,
+                    sample_idx,
                     current_epoch,
                     sample['prompt'],
                     generated_text,
-                    sample['chosen'],
-                    sample['rejected'], 
+                    sample.get('chosen', ''),
+                    sample.get('rejected', ''),
                 )
-        
-        return output
- 
+            except Exception as e:
+                print(f"Error logging to wandb: {e}")

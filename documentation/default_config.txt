@@ -1,0 +1,48 @@
+## Project Params
+wandb_project='experiment_gaia_llama2-7b_tests'
+model_name="/gaia_data/pretrained_models/llama2-7b-hf/"
+data_file="dpo_random_neg_op_comment_v002.json"
+project_data_dir="../data/"
+project_output_dir="../output"
+
+## HF Trainer Params
+per_device_train_batch_size=2
+gradient_accumulation_steps=2
+gradient_checkpointing=True
+learning_rate=5e-5
+lr_scheduler_type="cosine"
+save_strategy="no"
+logging_steps=500
+optim="paged_adamw_32bit"
+warmup_ratio=0.1
+num_train_epochs=3
+bf16=True
+report_to="wandb"
+evaluation_strategy="epoch"
+
+## LORA Params
+lora_r=16
+lora_alpha=16
+lora_dropout=0.05
+
+## DPO Params
+beta=0.1
+max_prompt_length=1024
+max_length=1536
+
+## Eval Sample Gen Txt Params
+eval_sample_gen_txt_idxs=[15]
+eval_sample_gen_txt_max_len=1500
+eval_sample_gen_txt_top_k=50
+eval_sample_gen_txt_top_p=0.9
+eval_sample_gen_txt_temperature=0.001
+eval_sample_gen_txt_do_sample=True
+
+## General Params
+seed=42
+
+## Dataset Prep
+preprocess_datasets=True
+preprocess_datasets_fn="template_edit_dataset"
+template_prefix="Instruction: When given a piece of text, your task is to craft a persuasive response that encourages the reader to reconsider or adjust their position. Employ strategies that include (but are not limited to presenting well-supported arguments, appealing to both emotions and logic, and thoughtfully addressing counterarguments. Adapt your tone to the context, ensuring your response is assertive yet respectful. Your goal is to move the reader's stance, ideally toward your perspective, but complete reversal isn't always necessary — nudging their viewpoint or sparking doubt can be just as valuable.\n\nInput: "
+template_suffix="\n\nOutput: "
