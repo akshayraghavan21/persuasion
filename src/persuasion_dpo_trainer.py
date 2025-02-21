@@ -25,12 +25,27 @@ from datasets import Dataset
 from torchmetrics.text import Perplexity
 from peft import PeftConfig
 
+def pad_left_to_length(tensor: torch.Tensor, length: int, pad_value: Union[int, float], dim: int = -1) -> torch.Tensor:
+    if tensor.size(dim) >= length:
+        return tensor
+    else:
+        pad_size = list(tensor.shape)
+        pad_size[dim] = length - tensor.size(dim)
+        return torch.cat(
+            [
+                pad_value * torch.ones(*pad_size, dtype=tensor.dtype, device=tensor.device),
+                tensor,
+            ],
+            dim=dim,
+        )
+
+
 class PersuasionDPOTrainer(DPOTrainer):
     def __init__(self, *args, **kwargs):
         self.wandb_run = kwargs.pop('wandb_run', None)
         self.file_suffix = self.generate_file_suffix(self.wandb_run)
-        self.sample_level_metrics_cols = ['type', 'epoch', 'step', 'prompt', 'loss', 'chosen_reward', 'rejected_reward', 'policy_logps_chosen', 'policy_logps_rejected', 'chosen', 'rejected', 'policy_chosen_pred_text', 'reference_chosen_pred_text', 'policy_rejected_pred_text', 'reference_rejected_pred_text']
-        self.eval_sample_gen_txt_cols = ['eval_sample_index', 'epoch', 'prompt', 'generated_text', 'chosen', 'rejected']
+        self.sample_level_metrics_cols = ['run_id', 'type', 'epoch', 'step', 'prompt', 'loss', 'chosen_reward', 'rejected_reward', 'policy_logps_chosen', 'policy_logps_rejected', 'chosen', 'rejected', 'policy_chosen_pred_text', 'reference_chosen_pred_text', 'policy_rejected_pred_text', 'reference_rejected_pred_text']
+        self.eval_sample_gen_txt_cols = ['run_id', 'eval_sample_index', 'epoch', 'prompt', 'generated_text', 'chosen', 'rejected']
 
         # Extract custom arguments
         self.sample_level_metrics_file_name = kwargs.pop('sample_level_metrics_file_name', f"batch_level_dpo_logs_{self.file_suffix}.csv")
@@ -46,7 +61,8 @@ class PersuasionDPOTrainer(DPOTrainer):
         self.eval_sample_gen_txt_do_sample = kwargs.pop('eval_sample_gen_txt_do_sample', True)
         
         
-        self.generate_and_log_custom_sample_during_eval = kwargs.pop('generate_and_log_custom_sample_during_eval', True)
+        self.eval_sample_gen_txt_subset_flag = kwargs.pop('eval_sample_gen_txt_subset_flag', True)
+        self.eval_sample_gen_txt_all_flag = kwargs.pop('eval_sample_gen_txt_all_flag', False)
 
         super().__init__(*args, **kwargs)
         self.perplexity_metric = Perplexity(ignore_index=-100)
@@ -57,6 +73,11 @@ class PersuasionDPOTrainer(DPOTrainer):
         
         if self.eval_sample_gen_txt_table_data is None and self.wandb_run is not None:
             self.eval_sample_gen_txt_table_data = wandb.Table(columns=self.eval_sample_gen_txt_cols)
+
+        # Allow only either of eval sample gen types, or none
+        if self.eval_sample_gen_txt_subset_flag == self.eval_sample_gen_txt_all_flag == True:
+            print("Passed Text generation on subset and all of eval data, setting text generation to all of data instead.")
+            self.eval_sample_gen_txt_subset_flag = False
     
     def generate_file_suffix(self, wandb_run):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -443,6 +464,7 @@ class PersuasionDPOTrainer(DPOTrainer):
             writer = csv.writer(csvfile)
             for i in range(len(batch['prompt'])):
                 writer.writerow([
+                    self.file_suffix,
                     train_eval,
                     self.state.epoch,
                     self.state.global_step,
@@ -461,6 +483,7 @@ class PersuasionDPOTrainer(DPOTrainer):
                 ])
                 if self.sample_level_metrics_table_data is not None:
                     self.sample_level_metrics_table_data.add_data(
+                        self.file_suffix,
                         train_eval,
                         self.state.epoch,
                         self.state.global_step,
@@ -483,83 +506,6 @@ class PersuasionDPOTrainer(DPOTrainer):
 
         return losses.mean(), metrics
     
-    # def evaluation_loop(
-    #     self,
-    #     dataloader: DataLoader,
-    #     description: str,
-    #     prediction_loss_only: Optional[bool] = None,
-    #     ignore_keys: Optional[List[str]] = None,
-    #     metric_key_prefix: str = "eval",
-    # ) -> EvalLoopOutput:
-    #     # Call the original evaluation loop
-    #     output = super().evaluation_loop(dataloader, description, prediction_loss_only, ignore_keys, metric_key_prefix)
-    #     import pdb; pdb.set_trace()
-    #     # Generate text for a random sample
-    #     if self.generate_and_log_custom_sample_during_eval:
-    #         # Select a random sample
-    #         eval_dataset = dataloader.dataset
-    #         random_index = self.eval_sample_gen_txt_idx
-    #         sample = eval_dataset[random_index]
-
-    #         model_device = self.model.device 
-    #         # Prepare the input
-    #         inputs = self.tokenizer(sample['prompt'], return_tensors="pt", truncation=True, padding=True)
-    #         inputs = {k: v.to(model_device) for k, v in inputs.items()}
-            
-    #         # import pdb; pdb.set_trace()
-    #         with torch.no_grad():
-    #             gen_output = self.model.generate(
-    #                 **inputs,
-    #                 max_length=self.eval_sample_gen_txt_max_len,
-    #                 top_k=self.eval_sample_gen_txt_top_k,
-    #                 top_p=self.eval_sample_gen_txt_top_p,
-    #                 temperature=self.eval_sample_gen_txt_temperature,
-    #                 do_sample=self.eval_sample_gen_txt_do_sample
-    #             )
-    #             generated_text = self.tokenizer.batch_decode(gen_output[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True)[0]
-
-    #         print("Printing Eval Text:",generated_text)
-            
-    #         # Get the current epoch
-    #         current_epoch = self.state.epoch
-                   
-    #         # Print to screen
-    #         print(f"Generated text for sample {random_index} at epoch {current_epoch:.2f}:")
-    #         print(generated_text)
-            
-    #         # Write to file
-    #         eval_samples_file_path = os.path.join(self.args.output_dir, self.eval_sample_gen_txt_file_name)
-
-        
-    #         # Create the CSV file with headers if it doesn't exist
-    #         if not os.path.exists(eval_samples_file_path):
-    #             with open(eval_samples_file_path, 'w', newline='') as csvfile:
-    #                 writer = csv.writer(csvfile)
-    #                 writer.writerow(self.eval_sample_gen_txt_cols)
-            
-    #         with open(eval_samples_file_path, 'a', newline='') as csvfile:
-    #             writer = csv.writer(csvfile)
-    #             writer.writerow([
-    #                 random_index,
-    #                 current_epoch,
-    #                 sample['prompt'],
-    #                 generated_text,
-    #                 sample['chosen'],
-    #                 sample['rejected'],
-    #             ])
-            
-    #         if self.eval_sample_gen_txt_table_data is not None:
-    #             self.eval_sample_gen_txt_table_data.add_data(
-    #                 random_index,
-    #                 current_epoch,
-    #                 sample['prompt'],
-    #                 generated_text,
-    #                 sample['chosen'],
-    #                 sample['rejected'], 
-    #             )
-        
-    #     return output
-
     def evaluation_loop(
         self,
         dataloader: DataLoader,
@@ -571,7 +517,7 @@ class PersuasionDPOTrainer(DPOTrainer):
         # Call the original evaluation loop
         output = super().evaluation_loop(dataloader, description, prediction_loss_only, ignore_keys, metric_key_prefix)
 
-        if self.generate_and_log_custom_sample_during_eval:
+        if self.eval_sample_gen_txt_subset_flag or self.eval_sample_gen_txt_all_flag:
             model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
             if len(self.accelerator._models) == 0 and model is self.model:
@@ -591,18 +537,22 @@ class PersuasionDPOTrainer(DPOTrainer):
                     self.deepspeed = self.model_wrapped
 
             self._generate_and_log_samples(dataloader, model)
-
         return output 
 
-    def _generate_and_log_samples(self, dataloader: DataLoader, model):
+    def _generate_and_log_samples(self, dataloader: DataLoader, model, gen_type="custom_sample"):
         eval_dataset = dataloader.dataset
         model_device = model.device
         current_epoch = self.state.epoch
 
-        for sample_idx in self.eval_sample_gen_txt_idxs:
-            sample = eval_dataset[sample_idx]
-            generated_text = self._generate_text(model, sample, model_device)
-            self._log_generated_text(sample_idx, current_epoch, sample, generated_text)
+        if self.eval_sample_gen_txt_all_flag:
+            for sample_idx, sample in tqdm(enumerate(eval_dataset), total=len(eval_dataset), desc="Generating text"): 
+                generated_text = self._generate_text(model, sample, model_device)
+                self._log_generated_text(sample_idx, current_epoch, sample, generated_text, verbose=False)
+        elif self.eval_sample_gen_txt_subset_flag:
+            for sample_idx in self.eval_sample_gen_txt_idxs:
+                sample = eval_dataset[sample_idx]
+                generated_text = self._generate_text(model, sample, model_device)
+                self._log_generated_text(sample_idx, current_epoch, sample, generated_text)
 
     def _generate_text(self, model, sample: Dict[str, Any], model_device: torch.device) -> str:
         inputs = self.tokenizer(sample['prompt'], return_tensors="pt", truncation=True, padding=True, max_length=self.max_length)
@@ -620,9 +570,10 @@ class PersuasionDPOTrainer(DPOTrainer):
         
         return self.tokenizer.batch_decode(gen_output[:, inputs['input_ids'].shape[1]:], skip_special_tokens=True)[0]
 
-    def _log_generated_text(self, sample_idx: int, current_epoch: float, sample: Dict[str, Any], generated_text: str):
-        print(f"Generated text for sample {sample_idx} at epoch {current_epoch:.2f}:")
-        print(generated_text)
+    def _log_generated_text(self, sample_idx: int, current_epoch: float, sample: Dict[str, Any], generated_text: str, verbose=True):
+        if verbose:
+            print(f"Generated text for sample {sample_idx} at epoch {current_epoch:.2f}:")
+            print(generated_text)
 
         self._write_to_csv(sample_idx, current_epoch, sample, generated_text)
         self._log_to_wandb(sample_idx, current_epoch, sample, generated_text)
@@ -641,6 +592,7 @@ class PersuasionDPOTrainer(DPOTrainer):
                     writer.writerow(self.eval_sample_gen_txt_cols)
                 
                 writer.writerow([
+                    self.file_suffix,
                     sample_idx,
                     current_epoch,
                     sample['prompt'],
@@ -655,6 +607,7 @@ class PersuasionDPOTrainer(DPOTrainer):
         if self.eval_sample_gen_txt_table_data is not None:
             try:
                 self.eval_sample_gen_txt_table_data.add_data(
+                    self.file_suffix,
                     sample_idx,
                     current_epoch,
                     sample['prompt'],

@@ -102,7 +102,7 @@ dependencies:
       - psutil==6.0.0
       - ptyprocess==0.7.0
       - pure-eval==0.2.2
-      - pyarrow==17.0.0
+      - pyarrow==16.1.0
       - pygments==2.18.0
       - python-dateutil==2.9.0.post0
       - pytz==2024.1
@@ -127,9 +127,9 @@ dependencies:
       - torch==2.0.1
       - torchmetrics==1.4.1
       - tornado==6.4.1
-      - tqdm==4.65.0
+      - tqdm==4.66.5
       - traitlets==5.14.3
-      - transformers==4.45.1
+      - transformers==4.44.0
       - triton==2.0.0
       - trl==0.11.1
       - typing-extensions==4.12.2
