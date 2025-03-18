@@ -1,0 +1,239 @@
+comments_sub_pft_v1
+submissions_sub_pft_v1
+
+submissions:
+author, id
+
+comments:
+author, right(link_id,4)
+
+DROP TABLE IF EXISTS temp_op_comments;
+CREATE TABLE temp_op_comments AS
+SELECT comments_sub_pft_v1.id 
+FROM comments_sub_pft_v1 
+JOIN submissions_sub_pft_v1 
+ON SUBSTRING(comments_sub_pft_v1.link_id, 4) = submissions_sub_pft_v1.id 
+AND comments_sub_pft_v1.author = submissions_sub_pft_v1.author;
+
+-- Add index for faster lookups
+CREATE INDEX idx_temp_op_id ON temp_op_comments(id(7));
+
+WITH RECURSIVE comment_thread AS (
+    -- Base case: Start with comments from temp_op_comments (i.e., OP's comments)
+    SELECT c.id, c.body, c.parent_id, c.user_id, c.created_at
+    FROM comments_sub_pft_v1 c
+    JOIN temp_op_comments t ON c.id = t.id  
+
+    UNION ALL
+
+    -- Recursive case: Find replies to these comments
+    SELECT c.id, c.content, c.parent_id, c.user_id, c.created_at
+    FROM comments_sub_pft_v1 c
+    INNER JOIN comment_thread ct ON c.parent_id = ct.id
+)
+SELECT * FROM comment_thread;
+
+
+WITH RECURSIVE comment_thread_single AS (
+    -- Base case: Start with comments from temp_op_comments (i.e., OP's comments)
+    SELECT c.id, c.link_id, c.parent_id, c.author, c.created_utc, c.body
+    FROM comments_sub_pft_v1 c where c.id = "j2jhipf"
+
+    UNION ALL
+
+    -- Recursive case: Find replies to these comments
+    SELECT c.id, c.link_id, c.parent_id, c.author, c.created_utc, c.body 
+    FROM comments_sub_pft_v1 c
+    INNER JOIN comment_thread_single ct ON substring(c.parent_id,4) = ct.id
+)
+SELECT * FROM comment_thread_single;
+
+Post: 1003si2, Author: MyFavoriteArm 
+Sample OP Comment: j2jhipf
+Sample OP Comments Parent Comment: j2jdomf 
+
+
+MariaDB [persuasion]> select author, id from submissions_sub_pft_v1 where id = "1003si2"\G
+*************************** 1. row ***************************
+author: MyFavoriteArm
+    id: 1003si2
+1 row in set (0.001 sec)
+
+MariaDB [persuasion]>
+
+
+MariaDB [persuasion]> select * from comments_sub_pft_v1 where id = "j2jhipf"\G
+*************************** 1. row ***************************
+            author: MyFavoriteArm
+author_created_utc: 1608929106
+              body: You make some good points about republican culture wars. Especially the dixie chicks and war on christmas. Both easy to forget about with all the other nonsense they spout
+  controversiality: 0
+       created_utc: 1672604220
+                id: j2jhipf
+           link_id: t3_1003si2
+         parent_id: t1_j2jdomf
+         permalink: /r/changemyview/comments/1003si2/cmv_i_dont_feel_like_i_belong_anywhere_politically/j2jhipf/
+      retrieved_on: 1676213481
+             score: 1
+             downs: 0
+               ups: 0
+1 row in set (0.001 sec)
+
+MariaDB [persuasion]>
+
+MariaDB [persuasion]> select * from comments_sub_pft_v1 where id = "j2jdomf"\G
+*************************** 1. row ***************************
+            author: SingleMaltMouthwash
+author_created_utc: 1546194784
+              body: You're still pretty far left. For the US anyway.
+
+
+
+This puts you squarely at odds with the people running the GOP.
+
+Contrary to the ridiculous propaganda, the DNC is not out to confiscate your guns. The GOP claimed Obama was coming for them but they all have more guns now than when he was elected.
+
+The broad position of the majority of the left is that gun laws have to be tightened, not that guns must (or can) be eliminated. The broad position of the right is that any firearms regulation is "infringement."
+
+
+
+You suggest this is a right-position. You may have forgotten the conservative boycott of the Dixie Chicks and dozens of calls to boycott or ban other figures, companies, products because of their stance on abortion or evolution or slavery or the war in Iraq. You seem unaware of the fabricated claims that the left was engaged in a "war on Christmas" because some people chose to say "happy holidays."
+
+Conservatives created the culture war even as they blamed it on the left.
+
+
+
+Nothing about that position excludes you from liberalism.
+
+
+
+Do you remember that it was the ACLU that defended the right of people to hold a Nazi parade in Skokie Illinois in a neighborhood full of holocaust survivors? It would be hard to find a more Leftie organization or a more hateful act to defend on the grounds of free speech.
+
+And yet, it has become inescapably obvious that hate speech is always expressed to accomplish an outcome and that outcome is violent and the injury and death that results is far better prevented than it is compensated. It's not always a clean equation, but on balance the left is far, far more respectful of the freedom of expression than the right, which is currently trying to ban books all over the nation.
+
+
+
+This excludes you from the American conservative movement.
+
+
+
+This does not exclude you from the Left. The left *tends* to hold it's leadership accountable. Al Franken was hounded out of his senate seat on suspicion with charges that later proved to be trumped up. While on the right you have an endless catalog of the morally bankrupt and openly criminal whom their party and their constituency coddles, cherishes and protects from any consequences and who refuse to accept any personal responsibility.
+
+
+
+One of the many sins of the conservative movement is that they've given capitalism a bad name. It works just fine in most of Europe where it's regulated and it's rewards are metered more equitably. But discussing any similar measures here gets you labeled a socialist or worse.
+
+Instead, since Reagan was elected, the great share of the rise in the GDP has gone almost exclusively to the top 1%~.1% of the income distribution. The fact that American industry is under-regulated, under-taxed, the fact that the effective tax rate of the wealthy is about 4% in this country, that millions cannot afford health care, are one illness away from financial disaster, that education lags behind our industrial peers, is all due to the resurgence of conservative principles, policies and legislation over the past 40 years.
+
+The DNC over that time has been a pack of cowardly, twinkle-toed milk-sops, too timorous or corrupt to stand up against the growing radicalization of the GOP.
+
+Your stated positions, to my mind, make you more left than most of the Democratic leadership. You don't fit into the conservative frame at all.
+  controversiality: 0
+       created_utc: 1672602739
+                id: j2jdomf
+           link_id: t3_1003si2
+         parent_id: t3_1003si2
+         permalink: /r/changemyview/comments/1003si2/cmv_i_dont_feel_like_i_belong_anywhere_politically/j2jdomf/
+      retrieved_on: 1676213581
+             score: 2
+             downs: 0
+               ups: 0
+1 row in set (0.000 sec)
+
+MariaDB [persuasion]>
+
+
+Now I want the output to be:
+MariaDB [persuasion]> select * from comments_sub_pft_v1 where id in ("j2jhipf", "j2jdomf") order by created_utc\G
+*************************** 1. row ***************************
+            author: SingleMaltMouthwash
+author_created_utc: 1546194784
+              body: You're still pretty far left. For the US anyway.
+
+
+
+This puts you squarely at odds with the people running the GOP.
+
+Contrary to the ridiculous propaganda, the DNC is not out to confiscate your guns. The GOP claimed Obama was coming for them but they all have more guns now than when he was elected.
+
+The broad position of the majority of the left is that gun laws have to be tightened, not that guns must (or can) be eliminated. The broad position of the right is that any firearms regulation is "infringement."
+
+
+
+You suggest this is a right-position. You may have forgotten the conservative boycott of the Dixie Chicks and dozens of calls to boycott or ban other figures, companies, products because of their stance on abortion or evolution or slavery or the war in Iraq. You seem unaware of the fabricated claims that the left was engaged in a "war on Christmas" because some people chose to say "happy holidays."
+
+Conservatives created the culture war even as they blamed it on the left.
+
+
+
+Nothing about that position excludes you from liberalism.
+
+
+
+Do you remember that it was the ACLU that defended the right of people to hold a Nazi parade in Skokie Illinois in a neighborhood full of holocaust survivors? It would be hard to find a more Leftie organization or a more hateful act to defend on the grounds of free speech.
+
+And yet, it has become inescapably obvious that hate speech is always expressed to accomplish an outcome and that outcome is violent and the injury and death that results is far better prevented than it is compensated. It's not always a clean equation, but on balance the left is far, far more respectful of the freedom of expression than the right, which is currently trying to ban books all over the nation.
+
+
+
+This excludes you from the American conservative movement.
+
+
+
+This does not exclude you from the Left. The left *tends* to hold it's leadership accountable. Al Franken was hounded out of his senate seat on suspicion with charges that later proved to be trumped up. While on the right you have an endless catalog of the morally bankrupt and openly criminal whom their party and their constituency coddles, cherishes and protects from any consequences and who refuse to accept any personal responsibility.
+
+
+
+One of the many sins of the conservative movement is that they've given capitalism a bad name. It works just fine in most of Europe where it's regulated and it's rewards are metered more equitably. But discussing any similar measures here gets you labeled a socialist or worse.
+
+Instead, since Reagan was elected, the great share of the rise in the GDP has gone almost exclusively to the top 1%~.1% of the income distribution. The fact that American industry is under-regulated, under-taxed, the fact that the effective tax rate of the wealthy is about 4% in this country, that millions cannot afford health care, are one illness away from financial disaster, that education lags behind our industrial peers, is all due to the resurgence of conservative principles, policies and legislation over the past 40 years.
+
+The DNC over that time has been a pack of cowardly, twinkle-toed milk-sops, too timorous or corrupt to stand up against the growing radicalization of the GOP.
+
+Your stated positions, to my mind, make you more left than most of the Democratic leadership. You don't fit into the conservative frame at all.
+  controversiality: 0
+       created_utc: 1672602739
+                id: j2jdomf
+           link_id: t3_1003si2
+         parent_id: t3_1003si2
+         permalink: /r/changemyview/comments/1003si2/cmv_i_dont_feel_like_i_belong_anywhere_politically/j2jdomf/
+      retrieved_on: 1676213581
+             score: 2
+             downs: 0
+               ups: 0
+*************************** 2. row ***************************
+            author: MyFavoriteArm
+author_created_utc: 1608929106
+              body: You make some good points about republican culture wars. Especially the dixie chicks and war on christmas. Both easy to forget about with all the other nonsense they spout
+  controversiality: 0
+       created_utc: 1672604220
+                id: j2jhipf
+           link_id: t3_1003si2
+         parent_id: t1_j2jdomf
+         permalink: /r/changemyview/comments/1003si2/cmv_i_dont_feel_like_i_belong_anywhere_politically/j2jhipf/
+      retrieved_on: 1676213481
+             score: 1
+             downs: 0
+               ups: 0
+2 rows in set (0.000 sec)
+
+
+("j2jhipf", "j2fen5k", "j2fh1rb")
+
+WITH RECURSIVE comment_thread AS (
+    -- Base case: Fetch all OP comments (comments made by submission author)
+    SELECT c.id, c.author, c.body, c.parent_id, c.link_id, c.created_utc
+    FROM comments_sub_pft_v1 c where c.id in ("j2fh1rb")
+
+    UNION ALL
+
+    -- Recursive case: Find replies to comments in the previous level
+    SELECT c.id, c.author, c.body, c.parent_id, c.link_id, c.created_utc
+    FROM comments_sub_pft_v1 c
+    INNER JOIN comment_thread ct ON c.id = substring(ct.parent_id, 4)
+)
+
+-- Get the full comment thread, ordered by creation time
+SELECT * FROM comment_thread ORDER BY created_utc;
+
+

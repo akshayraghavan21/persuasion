@@ -3,3 +3,4 @@ output/
 output_it/
 documentation/next_steps.txt
 src/__pycache__/
+data/persuasion_12_factor_comments_thread_dataset_v0.1_20250228.json
